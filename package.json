@@ -1,0 +1,33 @@
+{
+  "name": "sensbox-mqtt",
+  "version": "1.0.0",
+  "description": "Sensbox iot plattform - mqtt server",
+  "main": "server.js",
+  "dependencies": {
+    "chalk": "^2.3.2",
+    "debug": "^3.1.0",
+    "mosca": "^2.8.0",
+    "@sensbox/sensbox-db": "1.0.3",
+    "redis": "^2.8.0",
+    "request": "^2.85.0"
+  },
+  "devDependencies": {
+    "nodemon": "^1.17.2",
+    "standard": "^11.0.1"
+  },
+  "scripts": {
+    "start": "NODE_ENV=production node server.js",
+    "start-dev": "DEBUG=sensbox:* nodemon server.js",
+    "lint": "standard"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sensbox/sensbox-mqtt.git"
+  },
+  "author": "Santiago Semhan <santiago.semhan@gmail.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/sensbox/sensbox-mqtt/issues"
+  },
+  "homepage": "https://github.com/sensbox/sensbox-mqtt#readme"
+}
