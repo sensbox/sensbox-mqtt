@@ -112,7 +112,7 @@ async function init () {
 
           // Notify Agent is Connected
           if (!clients.get(client.id)) {
-            clients.set(client.id, agent)
+            clients.set(client.id, agent.toJSON())
             server.publish({
               topic: 'agent/connected',
               payload: JSON.stringify({
