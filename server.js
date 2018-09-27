@@ -131,7 +131,10 @@ async function init () {
             postMetrics.push({
               timestamp: metric.time,
               measurement: metric.type,
-              tags: { host: agent.uuid },
+              tags: {
+                host: agent.uuid,
+                serie: metric.serie || null
+              },
               fields: { value: metric.value}
             })
           }
