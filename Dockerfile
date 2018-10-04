@@ -1,9 +1,7 @@
 FROM keymetrics/pm2:8-alpine
 
-WORKDIR /srv/node-scripts/sensbox-mqtt
+WORKDIR /srv/node-scripts/
 # Bundle APP files
-COPY server.js .
-COPY utils.js .
 COPY package.json .
 COPY ecosystem.config.js .
 
