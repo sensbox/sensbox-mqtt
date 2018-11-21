@@ -5,20 +5,18 @@ const mosca = require('mosca')
 const redis = require('redis')
 const chalk = require('chalk')
 const db = require('@sensbox/sensbox-db')
-const request = require('request')
+const Influx = require('influx')
 
 const { parsePayload } = require('./utils')
 
-const _influx = {
-  url: process.env.INFLUX_URL || 'http://localhost:8081'
-}
+const influxDSN = process.env.INFLUX_DSN || 'http://localhost:8086/sensbox'
 
-const _influxUrl = `${_influx.url}/api`
+const influx = new Influx.InfluxDB(influxDSN)
 
 const backend = {
   type: 'redis',
   redis,
-  host: process.env.REDIS_HOST ||"localhost",
+  host: process.env.REDIS_HOST || 'localhost',
   db: process.env.REDIS_DB || 0,
   prefix: process.env.REDIS_CHANNEL ? `${process.env.REDIS_CHANNEL}` : 'default',
   return_buffers: true
@@ -60,7 +58,7 @@ async function init () {
     if (agent) {
       // Mark Agente as Disconnected
       agent.conectado = false
-
+      delete agent.descripcion
       try {
         await Agente.createOrUpdate(agent)
       } catch (e) {
@@ -92,22 +90,16 @@ async function init () {
         break
       case 'agent/message':
         // debug(`Payload: ${packet.payload}`)
-
         const payload = parsePayload(packet.payload)
-
         if (payload) {
           payload.agent.conectado = true
-
           let agent = await Agente.findByUuid(payload.agent.uuid)
-
           if (!agent || !agent.activo) break
-
           try {
             agent = await Agente.createOrUpdate(payload.agent)
           } catch (e) {
             return handleError(e)
           }
-
           debug(`Agente ${JSON.stringify(agent)} saved`)
 
           // Notify Agent is Connected
@@ -135,23 +127,14 @@ async function init () {
                 host: agent.uuid,
                 serie: metric.serie || null
               },
-              fields: { value: metric.value}
+              fields: { value: metric.value }
             })
           }
 
           if (postMetrics.length) {
             try {
-              // POST request to influx db writing metrics.
-              request.post({
-                url: `${_influxUrl}/metrics`,
-                json: true,
-                body: postMetrics
-              }, function done (err, httpResponse, body) {
-                if (err || body.error) {
-                  return debug('POST failed:', err || body.error)
-                }
-                debug('POST successful!  Server responded with:', body)
-              })
+              await influx.writePoints(postMetrics, { precision: 'ms' })
+              debug('POST successful!')
             } catch (e) {
               return handleError(e)
             }
