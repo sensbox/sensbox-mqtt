@@ -34,6 +34,7 @@ const config = {
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT) || 3306,
   dialect: 'mysql',
+  timezone: process.env.TIMEZONE || '+00:00',
   // logging: s => debug(s)
   logging: false
 }
@@ -119,6 +120,7 @@ async function init () {
 
           let postMetrics = []
           // Store Metrics
+          // TODO: Verify is metric is registered for store
           for (let metric of payload.metrics) {
             postMetrics.push({
               timestamp: metric.time,
