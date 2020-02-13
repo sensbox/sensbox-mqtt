@@ -1,87 +1,65 @@
 'use strict'
 
 const debug = require('debug')('sensbox:mqtt')
-const mosca = require('mosca')
-const redis = require('redis')
 const chalk = require('chalk')
-const db = require('@sensbox/sensbox-db')
-const Influx = require('influx')
+const Parse = require('parse/node');
+const aedes = require('aedes')()
+const server = require('net').createServer(aedes.handle)
+const port =  parseInt(process.env.PORT) || 1883
 
-const { parsePayload } = require('./utils')
+const { bufferToUTF8, parsePayload } = require('./utils')
 
-const influxDSN = process.env.INFLUX_DSN || 'http://localhost:8086/sensbox'
+Parse.initialize(process.env.CORE_APP_ID)
+Parse.serverURL = process.env.CORE_URL
 
-const influx = new Influx.InfluxDB(influxDSN)
 
-const backend = {
-  type: 'redis',
-  redis,
-  host: process.env.REDIS_HOST || 'localhost',
-  db: process.env.REDIS_DB || 0,
-  prefix: process.env.REDIS_CHANNEL ? `${process.env.REDIS_CHANNEL}` : 'default',
-  return_buffers: true
-}
-
-const settings = {
-  port: parseInt(process.env.PORT) || 1883,
-  backend
-}
-
-const config = {
-  database: process.env.DB_NAME || 'localhost',
-  username: process.env.DB_USERNAME || 'user',
-  password: process.env.DB_PASSWORD || 'pass',
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT) || 3306,
-  dialect: 'mysql',
-  timezone: process.env.TIMEZONE || '+00:00',
-  // logging: s => debug(s)
-  logging: false
-}
-
-async function init () {
-  const services = await db(config).catch(handleFatalError)
-
-  let Agente = services.Agente
-
-  const server = new mosca.Server(settings)
+function initServer(){
   const clients = new Map()
 
-  server.on('clientConnected', client => {
+  server.listen(port, function () {
+    debug(`${chalk.green('[sensbox-mqtt]')} server is running on ${port}`)
+  })
+
+  aedes.authenticate = async function (client, username, password, callback) {
+    try {
+      await Parse.Cloud.run('mqttAuthorizeClient', { 
+        username: bufferToUTF8(username),
+        password: bufferToUTF8(password),
+      });
+      callback(null, true)
+    } catch (error) {
+      debug(error);
+      error.returnCode = 4
+      callback(error, null)
+    }
+  }
+
+  aedes.on('client', client => {
     debug(`Client Connected: ${client.id}`)
     clients.set(client.id, null)
   })
 
-  server.on('clientDisconnected', async (client) => {
+  aedes.on('clientDisconnect', async client => {
     debug(`Client Disconnected: ${client.id}`)
-    const agent = clients.get(client.id)
-
-    if (agent) {
-      // Mark Agente as Disconnected
-      agent.conectado = false
-      delete agent.descripcion
-      try {
-        await Agente.createOrUpdate(agent)
-      } catch (e) {
-        return handleError(e)
-      }
-
+    const device = clients.get(client.id)
+    if (device) {
+      // Set Device as Disconnected
+      const { device: serverDevice } = await Parse.Cloud.run('mqttDisconnectDevice', { uuid: device.uuid });
       // Delete Agente from Clients List
       clients.delete(client.id)
-
-      server.publish({
+      aedes.publish({
         topic: 'agent/disconnected',
         payload: JSON.stringify({
           agent: {
-            uuid: agent.uuid
+            uuid: serverDevice.uuid
           }
         })
       })
-      debug(`Client (${client.id}) associated to Agente (${agent.uuid}) marked as disconnected`)
+      debug(`Client (${client.id}) associated to Agente (${device.uuid}) id disconnected`)
     }
   })
 
-  server.on('published', async (packet, client) => {
+  aedes.on('publish', async function (packet, client) {
     debug(`Received: ${packet.topic}`)
 
     switch (packet.topic) {
@@ -93,63 +71,61 @@ async function init () {
         // debug(`Payload: ${packet.payload}`)
         const payload = parsePayload(packet.payload)
         if (payload) {
-          payload.agent.conectado = true
-          let agent = await Agente.findByUuid(payload.agent.uuid)
-          if (!agent || !agent.activo) break
           try {
-            agent = await Agente.createOrUpdate(payload.agent)
-          } catch (e) {
-            return handleError(e)
-          }
-          debug(`Agente ${JSON.stringify(agent)} saved`)
-
-          // Notify Agent is Connected
-          if (!clients.get(client.id)) {
-            clients.set(client.id, agent.toJSON())
-            server.publish({
-              topic: 'agent/connected',
-              payload: JSON.stringify({
-                agent: {
-                  uuid: agent.uuid,
-                  hostname: agent.hostname,
-                  conectado: agent.conectado
-                }
+            // Notify Device is Connected
+            if (!clients.get(client.id)) {
+              const { device } = await Parse.Cloud.run('mqttConnectDevice', { uuid: payload.agent.uuid });
+              debug(`Device ${JSON.stringify(device)} connected`)
+              clients.set(client.id, device)
+              aedes.publish({
+                topic: 'agent/connected',
+                payload: JSON.stringify({
+                  agent: {
+                    uuid: device.uuid,
+                    hostname: device.hostname,
+                    connected: device.connected
+                  }
+                })
               })
-            })
-          }
-
-          let postMetrics = []
-          // Store Metrics
-          // TODO: Verify is metric is registered for store
-          for (let metric of payload.metrics) {
-            postMetrics.push({
-              timestamp: metric.time,
-              measurement: metric.type,
-              tags: {
-                host: agent.uuid,
-                serie: metric.serie || null
-              },
-              fields: { value: metric.value }
-            })
-          }
-
-          if (postMetrics.length) {
-            try {
-              await influx.writePoints(postMetrics, { precision: 'ms' })
-              debug('POST successful!')
-            } catch (e) {
-              return handleError(e)
             }
+          } catch (error) {
+            debug(error);
+            break;
           }
+          Parse.Cloud.run('mqttHandlePayload', { payload }).then(result => {
+            debug(`Device ${result.device.uuid}, stored ${result.stored}`)
+          }).catch(handleError);
         }
         break
     }
   })
-
-  server.on('ready', async () => {
-    console.log(`${chalk.green('[sensbox-mqtt]')} server is running on ${settings.port}`)
-  })
-
+  
+  const listenDevicesConfigurations = async () => {
+    const query = new Parse.Query('DeviceMessage');
+    query.equalTo('topic', 'agent/configuration');
+    const subscription = await query.subscribe();
+    subscription.on('create', (message) => {
+      const { uuid } = message.toJSON();
+      // console.log("EVENTS", jsonMessage); 
+      clients.forEach((device, clientId) => {
+        if (device.uuid === uuid) {
+          const client = aedes.clients[clientId];
+          if (client) {
+            client.publish({
+              topic: 'agent/configuration',
+              payload: JSON.stringify({
+                agent: {
+                  uuid: message.uuid,
+                },
+                configurations: message.payload
+              })
+            })
+          }
+        }
+      });
+    });
+  }
+  listenDevicesConfigurations();
   server.on('error', handleFatalError)
 }
 
@@ -167,5 +143,4 @@ function handleError (err) {
 process.on('uncaughtException', handleFatalError)
 process.on('unhandledRejection', handleFatalError)
 
-// Start Server!!!
-init()
+initServer();

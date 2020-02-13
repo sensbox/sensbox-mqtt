@@ -14,6 +14,9 @@ function parsePayload (payload) {
   return payload
 }
 
+const bufferToUTF8 = (buffer) => buffer ? buffer.toString('utf8') : undefined;
+
 module.exports = {
-  parsePayload
+  parsePayload,
+  bufferToUTF8
 }
