@@ -14,7 +14,7 @@
     "standard": "^11.0.1"
   },
   "scripts": {
-    "start": "DEBUG=sensbox:* NODE_ENV=production node server.js",
+    "start": "DEBUG=sensbox:* node server.js",
     "start-dev": "DEBUG=sensbox:* nodemon server.js",
     "lint": "standard"
   },
