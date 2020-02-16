@@ -1,5 +1,4 @@
-node_modules
-.gitignore
-.DS_Store
-.vscode
-.git
+*
+!package.json
+!server.js
+!utils.js
