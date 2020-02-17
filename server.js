@@ -9,7 +9,6 @@ const port = parseInt(process.env.PORT) || 1883;
 
 const { bufferToUTF8, parsePayload } = require('./utils');
 
-console.log(process.env.CORE_APP_ID);
 Parse.initialize(process.env.CORE_APP_ID);
 Parse.serverURL = process.env.CORE_URL;
 
