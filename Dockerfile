@@ -1,13 +1,19 @@
 FROM node:lts
 
 WORKDIR /srv/node-scripts/
-# Bundle APP files
-COPY package.json server.js utils.js ./
+
 
 # Install app dependencies
+COPY package.json package.json 
+COPY package-lock.json package-lock.json 
 ENV NPM_CONFIG_LOGLEVEL warn
 
-RUN npm install --production
+RUN npm ci
+
+# Bundle APP files
+COPY server.js utils.js ./
+
+
 
 # Expose the listening port of your app
 EXPOSE 1883
