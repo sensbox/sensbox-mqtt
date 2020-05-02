@@ -35,7 +35,7 @@ const aedes = require('aedes')({
 })
 const server = require('net').createServer(aedes.handle)
 
-Parse.initialize(process.env.CORE_APP_ID)
+Parse.initialize(process.env.CORE_APP_ID, undefined, process.env.PARSE_SERVER_MASTER_KEY)
 Parse.serverURL = process.env.CORE_URL
 
 function initServer() {
@@ -46,10 +46,14 @@ function initServer() {
 
   aedes.authenticate = async function (client, username, password, callback) {
     try {
-      await Parse.Cloud.run('mqttAuthorizeClient', {
-        username: bufferToUTF8(username),
-        password: bufferToUTF8(password)
-      })
+      await Parse.Cloud.run(
+        'mqttAuthorizeClient',
+        {
+          username: bufferToUTF8(username),
+          password: bufferToUTF8(password)
+        },
+        { useMasterKey: true }
+      )
       callback(null, true)
     } catch (error) {
       debug(error)
@@ -69,9 +73,13 @@ function initServer() {
     const device = JSON.parse(result)
     if (device) {
       // Set Device as Disconnected
-      const { device: serverDevice } = await Parse.Cloud.run('mqttDisconnectDevice', {
-        uuid: device.uuid
-      })
+      const { device: serverDevice } = await Parse.Cloud.run(
+        'mqttDisconnectDevice',
+        {
+          uuid: device.uuid
+        },
+        { useMasterKey: true }
+      )
       // Delete Agente from Clients List
       await redis.del(client.id)
       aedes.publish({
@@ -103,9 +111,13 @@ function initServer() {
             const result = await redis.get(client.id)
             const parsedClient = result ? JSON.parse(result) : undefined
             if (!parsedClient) {
-              const { device } = await Parse.Cloud.run('mqttConnectDevice', {
-                uuid: payload.agent.uuid
-              })
+              const { device } = await Parse.Cloud.run(
+                'mqttConnectDevice',
+                {
+                  uuid: payload.agent.uuid
+                },
+                { useMasterKey: true }
+              )
               debug(`Device ${JSON.stringify(device)} connected`)
               await redis.set(client.id, JSON.stringify(device))
               aedes.publish({
@@ -123,7 +135,7 @@ function initServer() {
             debug(error)
             break
           }
-          Parse.Cloud.run('mqttHandlePayload', { payload })
+          Parse.Cloud.run('mqttHandlePayload', { payload }, { useMasterKey: true })
             .then((result) => {
               debug(`Device ${result.device.uuid}, stored ${result.stored}`)
             })
