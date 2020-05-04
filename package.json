@@ -11,7 +11,8 @@
     "dsn-parser": "^1.0.3",
     "ioredis": "^4.16.3",
     "mqemitter-redis": "^4.0.3",
-    "parse": "^2.7.0"
+    "parse": "^2.7.0",
+    "websocket-stream": "^5.5.2"
   },
   "devDependencies": {
     "nodemon": "^1.17.2",
