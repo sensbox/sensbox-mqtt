@@ -2,6 +2,7 @@
 
 const debug = require('debug')('sensbox:mqtt')
 const chalk = require('chalk')
+const ws = require('websocket-stream')
 const Parse = require('parse/node')
 const os = require('os')
 const Redis = require('ioredis')
@@ -9,12 +10,16 @@ const redisPersistence = require('aedes-persistence-redis')
 const mqemitter = require('mqemitter-redis')
 const DSNParser = require('dsn-parser')
 const port = parseInt(process.env.PORT) || 1883
+const wsPort = parseInt(process.env.WS_PORT) || 8888
+
 const { bufferToUTF8, parsePayload } = require('./utils')
 
 const redis = new Redis(process.env.REDIS_DSN)
 
 var dsn = new DSNParser(process.env.REDIS_DSN)
 const { host, port: redisPort, database, password } = dsn.getParts()
+
+debug(`${chalk.green('[sensbox-mqtt]')} redis parameters:`, dsn.getParts())
 
 const aedes = require('aedes')({
   id: os.hostname(),
@@ -33,15 +38,26 @@ const aedes = require('aedes')({
     maxSessionDelivery: 1000 // maximum offline messages deliverable on client CONNECT, default is 1000
   })
 })
+
+// Instantiate a TCP mqtt server
 const server = require('net').createServer(aedes.handle)
+
+// Instantiate a websocket server
+const httpServer = require('http').createServer()
+ws.createServer({ server: httpServer }, aedes.handle)
 
 Parse.initialize(process.env.CORE_APP_ID, undefined, process.env.PARSE_SERVER_MASTER_KEY)
 Parse.serverURL = process.env.CORE_URL
 
 function initServer() {
+  // TCP Server Listen
   server.listen(port, function () {
     debug(`${chalk.green('[sensbox-mqtt]')} server is running on ${port}`)
-    debug(`${chalk.green('[sensbox-mqtt]')} redis parameters:`, dsn.getParts())
+  })
+
+  // Ws Server Listen
+  httpServer.listen(wsPort, function () {
+    debug(`${chalk.green('[sensbox-mqtt]')} websocket is running on ${wsPort}`)
   })
 
   aedes.authenticate = async function (client, username, password, callback) {
@@ -177,6 +193,7 @@ function initServer() {
   server.on('error', handleFatalError)
 }
 
+// Init servers
 initServer()
 
 function handleFatalError(err) {

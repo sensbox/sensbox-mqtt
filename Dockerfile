@@ -17,5 +17,6 @@ COPY server.js utils.js ./
 
 # Expose the listening port of your app
 EXPOSE 1883
+EXPOSE 8888
 
 CMD [ "npm", "run", "start" ]
