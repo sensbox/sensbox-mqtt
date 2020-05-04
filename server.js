@@ -179,9 +179,9 @@ function initServer() {
               topic: 'agent/configuration',
               payload: JSON.stringify({
                 agent: {
-                  uuid: message.uuid
+                  uuid: message.get('uuid')
                 },
-                configurations: message.payload
+                configurations: message.get('payload')
               })
             })
           }
