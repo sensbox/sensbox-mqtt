@@ -71,10 +71,10 @@ function initServer() {
         { useMasterKey: true }
       )
       callback(null, true)
-    } catch (error) {
-      debug(error)
-      error.returnCode = 4
-      callback(error, null)
+    } catch (err) {
+      debug(`${chalk.red('[Authentication Error]')} ${err.message}`)
+      err.returnCode = 4
+      callback(err, null)
     }
   }
 
@@ -85,29 +85,34 @@ function initServer() {
 
   aedes.on('clientDisconnect', async (client) => {
     debug(`Client Disconnected: ${client.id}`)
-    const result = await redis.get(client.id)
-    const device = result ? JSON.parse(result) : undefined
-    if (device) {
-      // Set Device as Disconnected
-      const { device: serverDevice } = await Parse.Cloud.run(
-        'mqttDisconnectDevice',
-        {
-          uuid: device.uuid
-        },
-        { useMasterKey: true }
-      )
-      aedes.publish({
-        topic: 'agent/disconnected',
-        payload: JSON.stringify({
-          agent: {
-            uuid: serverDevice.uuid
-          }
+    try {
+      const result = await redis.get(client.id)
+      const device = result ? JSON.parse(result) : undefined
+      if (device) {
+        // Delete Agent from Clients List
+        await redis.del(client.id)
+        aedes.publish({
+          topic: 'agent/disconnected',
+          payload: JSON.stringify({
+            agent: {
+              uuid: device.uuid
+            }
+          })
         })
-      })
-      debug(`Client (${client.id}) associated to Agent (${device.uuid}) id disconnected`)
+        // Set Device as Disconnected
+        await Parse.Cloud.run(
+          'mqttDisconnectDevice',
+          {
+            uuid: device.uuid
+          },
+          { useMasterKey: true }
+        )
+
+        debug(`Client (${client.id}) associated to Agent (${device.uuid}) id disconnected`)
+      }
+    } catch (err) {
+      debug(`${chalk.red('[clientDisconnect Error]')} ${err.message}`)
     }
-    // Delete Agente from Clients List
-    await redis.del(client.id)
   })
 
   aedes.on('publish', async function (packet, client) {
@@ -147,15 +152,13 @@ function initServer() {
                 })
               })
             }
-          } catch (error) {
-            debug(error)
-            break
-          }
-          Parse.Cloud.run('mqttHandlePayload', { payload }, { useMasterKey: true })
-            .then((result) => {
+            Parse.Cloud.run('mqttHandlePayload', { payload }, { useMasterKey: true }).then((result) => {
               debug(`Device ${result.device.uuid}, stored ${result.stored}`)
             })
-            .catch(handleError)
+          } catch (err) {
+            debug(`${chalk.red('[publish agent/message Error]')} ${err.message}`)
+            break
+          }
         }
         break
     }
@@ -165,16 +168,20 @@ function initServer() {
     const query = new Parse.Query('DeviceMessage')
     query.equalTo('topic', 'agent/configuration')
     const subscription = await query.subscribe()
+
+    // suscribe to new agent/configuration message
     subscription.on('create', async (message) => {
       const { uuid } = message.toJSON()
-      // console.log("EVENTS", jsonMessage);
       const clientKeys = await redis.keys('mqttjs*')
       clientKeys.forEach(async (clientId) => {
+        // sercho for clients in redis db
         const result = await redis.get(clientId)
         const device = result ? JSON.parse(result) : {}
         if (device.uuid === uuid) {
           const client = aedes.clients[clientId]
+
           if (client) {
+            // publish new configuration to client
             client.publish({
               topic: 'agent/configuration',
               payload: JSON.stringify({
@@ -189,6 +196,7 @@ function initServer() {
       })
     })
   }
+
   listenDevicesConfigurations()
   server.on('error', handleFatalError)
 }
@@ -202,9 +210,5 @@ function handleFatalError(err) {
   process.exit(1)
 }
 
-function handleError(err) {
-  console.error(`${chalk.red('[error]')} ${err.message}`)
-  console.error(err.stack)
-}
 process.on('uncaughtException', handleFatalError)
 process.on('unhandledRejection', handleFatalError)
