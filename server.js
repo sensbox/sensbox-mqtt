@@ -86,7 +86,7 @@ function initServer() {
   aedes.on('clientDisconnect', async (client) => {
     debug(`Client Disconnected: ${client.id}`)
     const result = await redis.get(client.id)
-    const device = JSON.parse(result)
+    const device = result ? JSON.parse(result) : undefined
     if (device) {
       // Set Device as Disconnected
       const { device: serverDevice } = await Parse.Cloud.run(
