@@ -96,8 +96,6 @@ function initServer() {
         },
         { useMasterKey: true }
       )
-      // Delete Agente from Clients List
-      await redis.del(client.id)
       aedes.publish({
         topic: 'agent/disconnected',
         payload: JSON.stringify({
@@ -108,6 +106,8 @@ function initServer() {
       })
       debug(`Client (${client.id}) associated to Agent (${device.uuid}) id disconnected`)
     }
+    // Delete Agente from Clients List
+    await redis.del(client.id)
   })
 
   aedes.on('publish', async function (packet, client) {
