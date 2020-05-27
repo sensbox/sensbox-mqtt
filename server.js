@@ -152,9 +152,8 @@ function initServer() {
                 })
               })
             }
-            Parse.Cloud.run('mqttHandlePayload', { payload }, { useMasterKey: true }).then((result) => {
-              debug(`Device ${result.device.uuid}, stored ${result.stored}`)
-            })
+            const payloadResult = await Parse.Cloud.run('mqttHandlePayload', { payload }, { useMasterKey: true })
+            debug(`Device ${payloadResult.device.uuid}, stored ${payloadResult.stored}`)
           } catch (err) {
             debug(`${chalk.red('[publish agent/message Error]')} ${err.message}`)
             break
